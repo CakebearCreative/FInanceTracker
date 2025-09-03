@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Wallet, TrendingUp, RefreshCw, Settings, Home, BarChart3 } from 'lucide-react';
-import { PortfolioSummary } from './components/PortfolioSummary';
+import { Plus, Wallet, TrendingUp, TrendingDown, RefreshCw, Settings, Home, BarChart3 } from 'lucide-react';
+
 import { PortfolioChart } from './components/PortfolioChart';
 import { AssetList } from './components/AssetList';
 import { AccountForm } from './components/AccountForm';
@@ -11,7 +11,7 @@ import { AccountView } from './components/AccountView';
 import { RealEstateForm } from './components/RealEstateForm';
 import { RealEstateList } from './components/RealEstateList';
 import { db } from './lib/database';
-import { calculatePortfolioSummary } from './lib/portfolioUtils';
+import { calculatePortfolioSummary, formatCurrency, formatPercentage } from './lib/portfolioUtils';
 import { startPriceUpdates, updateAllAssetPrices } from './lib/priceUpdateService';
 import { getSettings } from './lib/settings';
 import type { PortfolioSummary as PortfolioSummaryType } from './lib/portfolioUtils';
@@ -23,13 +23,17 @@ function App() {
   const [showRealEstateForm, setShowRealEstateForm] = useState(false);
   const [currentView, setCurrentView] = useState<'portfolio' | 'accounts' | 'real-estate'>('portfolio');
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
+  const [performanceMode, setPerformanceMode] = useState<'absolute' | 'relative'>('absolute');
   const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummaryType>({
     totalValue: 0,
+    totalCurrentValue: 0,
     totalInitialValue: 0,
     totalGainLoss: 0,
     totalGainLossPercentage: 0,
     assetCount: 0,
     accountCount: 0,
+    totalAssets: 0,
+    totalAccounts: 0,
     displayCurrency: 'SEK'
   });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -39,12 +43,12 @@ function App() {
     loadPortfolioData();
     // Start automatic price updates
     startPriceUpdates();
-  }, [refreshTrigger]);
+  }, [refreshTrigger, performanceMode]);
 
   const loadPortfolioData = async () => {
     const assets = await db.assets.toArray();
     const settings = await getSettings();
-    const summary = await calculatePortfolioSummary(assets, settings.displayCurrency);
+    const summary = await calculatePortfolioSummary(assets, settings.displayCurrency, performanceMode);
     setPortfolioSummary(summary);
   };
 
@@ -83,6 +87,32 @@ function App() {
             </div>
             
             <div className="flex gap-3">
+              {/* Performance Mode Toggle */}
+              <div className="flex gap-1 bg-gray-700 rounded-lg p-1">
+                <button
+                  onClick={() => setPerformanceMode('absolute')}
+                  className={`px-3 py-1 text-sm rounded transition-colors ${
+                    performanceMode === 'absolute'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                  title="Show total gain/loss including all investments"
+                >
+                  Total
+                </button>
+                <button
+                  onClick={() => setPerformanceMode('relative')}
+                  className={`px-3 py-1 text-sm rounded transition-colors ${
+                    performanceMode === 'relative'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                  title="Show performance relative to initial investment only"
+                >
+                  Performance
+                </button>
+              </div>
+
               <button
                 onClick={() => setShowSettings(true)}
                 className="btn"
@@ -159,14 +189,51 @@ function App() {
       </header>
 
       <main className="container py-6">
-        {currentView === 'portfolio' && (
+                {currentView === 'portfolio' && (
           <>
-            <PortfolioSummary summary={portfolioSummary} />
-            
-            <div className="grid grid-2 gap-6 mt-6">
-              <PortfolioChart />
-              <AssetList refreshTrigger={refreshTrigger} />
+            {/* Merged Portfolio Overview and Performance */}
+            <div className="card mb-6">
+              {/* Portfolio Summary Stats */}
+              <div className="grid grid-5 gap-6 mb-6">
+                <div>
+                  <p className="text-muted text-sm">Total Value</p>
+                  <p className="font-semibold text-2xl">{formatCurrency(portfolioSummary.totalCurrentValue, portfolioSummary.displayCurrency)}</p>
+                </div>
+                <div>
+                  <p className="text-muted text-sm">Total Gain/Loss</p>
+                  <div className="flex items-center gap-2">
+                    {portfolioSummary.totalGainLoss >= 0 ? (
+                      <TrendingUp className="w-5 h-5 text-success" />
+                    ) : (
+                      <TrendingDown className="w-5 h-5 text-danger" />
+                    )}
+                    <span className={`font-semibold text-xl ${portfolioSummary.totalGainLoss >= 0 ? 'text-success' : 'text-danger'}`}>
+                      {formatCurrency(portfolioSummary.totalGainLoss, portfolioSummary.displayCurrency)}
+                    </span>
+                  </div>
+                  <p className={`text-sm ${portfolioSummary.totalGainLoss >= 0 ? 'text-success' : 'text-danger'}`}>
+                    {formatPercentage(portfolioSummary.totalGainLossPercentage)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted text-sm">Initial Investment</p>
+                  <p className="font-semibold text-xl">{formatCurrency(portfolioSummary.totalInitialValue, portfolioSummary.displayCurrency)}</p>
+                </div>
+                <div>
+                  <p className="text-muted text-sm">Assets</p>
+                  <p className="font-semibold text-xl">{portfolioSummary.totalAssets}</p>
+                </div>
+                <div>
+                  <p className="text-muted text-sm">Accounts</p>
+                  <p className="font-semibold text-xl">{portfolioSummary.totalAccounts}</p>
+                </div>
+              </div>
+
+              {/* Full-width Performance Chart */}
+              <PortfolioChart refreshTrigger={refreshTrigger} />
             </div>
+
+            <AssetList refreshTrigger={refreshTrigger} />
           </>
         )}
 

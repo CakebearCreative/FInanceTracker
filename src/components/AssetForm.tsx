@@ -14,12 +14,8 @@ export const AssetForm: React.FC<AssetFormProps> = ({ onClose, onAssetAdded }) =
     name: '',
     type: 'stock' as Asset['type'],
     symbol: '',
-    exchange: '',
-    currentPrice: '',
-    initialPrice: '',
-    quantity: '1',
-    currency: 'SEK' as Asset['currency'],
-    autoUpdate: false,
+    purchaseValue: '',
+    purchaseDate: new Date().toISOString().split('T')[0],
     interestRate: ''
   });
 
@@ -39,26 +35,44 @@ export const AssetForm: React.FC<AssetFormProps> = ({ onClose, onAssetAdded }) =
     e.preventDefault();
     
     try {
-      const currentPrice = parseFloat(formData.currentPrice);
-      const initialPrice = parseFloat(formData.initialPrice);
-      const quantity = parseFloat(formData.quantity);
-      const currentValue = currentPrice * quantity;
-      const initialValue = initialPrice * quantity;
+      const purchaseValue = parseFloat(formData.purchaseValue);
+
+      // Determine currency and exchange based on symbol
+      let currency: 'SEK' | 'EUR' | 'USD' = 'SEK';
+      let exchange = '';
+      let autoUpdate = false;
+
+      if (formData.symbol) {
+        if (formData.symbol.includes('.ST') || formData.symbol.includes('-B') || formData.symbol.includes('-A')) {
+          currency = 'SEK';
+          exchange = 'STO';
+        } else if (formData.symbol.match(/^[A-Z]{1,5}$/)) {
+          currency = 'USD';
+          exchange = 'NASDAQ';
+        }
+        autoUpdate = formData.type === 'stock' || formData.type === 'index';
+      }
+
+      // For simplicity, we'll use quantity = 1 and price = purchaseValue
+      // This way we track value directly without worrying about shares
+      const quantity = 1;
+      const pricePerUnit = purchaseValue;
 
       await db.assets.add({
         accountId: parseInt(formData.accountId),
         name: formData.name,
         type: formData.type,
         symbol: formData.symbol || undefined,
-        exchange: formData.exchange || undefined,
-        currentPrice,
-        currentValue,
-        initialPrice,
-        initialValue,
+        exchange: exchange || undefined,
+        currentPrice: pricePerUnit,
+        currentValue: purchaseValue,
+        initialPrice: pricePerUnit,
+        initialValue: purchaseValue,
         quantity,
-        currency: formData.currency,
-        autoUpdate: formData.autoUpdate,
+        currency,
+        autoUpdate,
         interestRate: formData.interestRate ? parseFloat(formData.interestRate) : undefined,
+        purchaseDate: new Date(formData.purchaseDate),
         createdAt: new Date(),
         updatedAt: new Date()
       });
@@ -69,8 +83,9 @@ export const AssetForm: React.FC<AssetFormProps> = ({ onClose, onAssetAdded }) =
         // Add initial value to history
         await db.valueHistory.add({
           assetId: newAsset.id,
-          value: currentValue,
-          date: new Date()
+          value: purchaseValue,
+          price: pricePerUnit,
+          date: new Date(formData.purchaseDate)
         });
       }
       
@@ -78,6 +93,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ onClose, onAssetAdded }) =
       onClose();
     } catch (error) {
       console.error('Error adding asset:', error);
+      alert('Error adding asset. Please check your inputs and try again.');
     }
   };
 
@@ -117,19 +133,6 @@ export const AssetForm: React.FC<AssetFormProps> = ({ onClose, onAssetAdded }) =
             </select>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Asset Name</label>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              className="input"
-              placeholder="e.g., Apple Inc., S&P 500 Index"
-              required
-            />
-          </div>
-
           <div className="grid grid-2">
             <div className="form-group">
               <label className="form-label">Asset Type</label>
@@ -142,103 +145,89 @@ export const AssetForm: React.FC<AssetFormProps> = ({ onClose, onAssetAdded }) =
               >
                 <option value="stock">Stock</option>
                 <option value="index">Index Fund</option>
-                <option value="bond">Bond</option>
-                <option value="cash">Cash</option>
                 <option value="savings">Savings Account</option>
+                <option value="bond">Bond</option>
                 <option value="crypto">Cryptocurrency</option>
+                <option value="cash">Cash</option>
                 <option value="other">Other</option>
               </select>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Symbol</label>
+              <label className="form-label">Asset Name</label>
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                className="input"
+                placeholder="e.g., NVIDIA Corporation, Volvo B"
+                required
+              />
+            </div>
+          </div>
+
+          {(formData.type === 'stock' || formData.type === 'index' || formData.type === 'crypto') && (
+            <div className="form-group">
+              <label className="form-label">Trading Symbol</label>
               <input
                 type="text"
                 name="symbol"
                 value={formData.symbol}
                 onChange={handleChange}
                 className="input"
-                placeholder="e.g., VOLV-B, AAPL, SPY"
-                required={formData.autoUpdate}
+                placeholder="e.g., NVDA, VOLV-B.ST, BTC"
+                required
               />
+              <p className="text-sm text-muted mt-1">
+                For Swedish stocks: Use format like VOLV-B.ST • For US stocks: Use format like NVDA
+              </p>
             </div>
-          </div>
+          )}
 
           <div className="grid grid-2">
             <div className="form-group">
-              <label className="form-label">Exchange</label>
-              <select
-                name="exchange"
-                value={formData.exchange}
-                onChange={handleChange}
-                className="select"
-              >
-                <option value="">Select Exchange</option>
-                <option value="STO">Stockholm (STO)</option>
-                <option value="NYSE">New York (NYSE)</option>
-                <option value="NASDAQ">NASDAQ</option>
-                <option value="LSE">London (LSE)</option>
-                <option value="FRA">Frankfurt (FRA)</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Currency</label>
-              <select
-                name="currency"
-                value={formData.currency}
-                onChange={handleChange}
-                className="select"
-                required
-              >
-                <option value="SEK">SEK</option>
-                <option value="EUR">EUR</option>
-                <option value="USD">USD</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-3">
-            <div className="form-group">
-              <label className="form-label">Quantity</label>
+              <label className="form-label">Purchase Date</label>
               <input
-                type="number"
-                name="quantity"
-                value={formData.quantity}
+                type="date"
+                name="purchaseDate"
+                value={formData.purchaseDate}
                 onChange={handleChange}
                 className="input"
-                step="0.001"
-                min="0"
                 required
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label">Initial Price</label>
+              <label className="form-label">
+                {formData.type === 'savings' ? 'Initial Amount' : 'Purchase Value'}
+              </label>
+              {/* Currency Display */}
+              {formData.symbol && (
+                <div className="mb-2">
+                  <span className="text-xs text-muted bg-gray-700 px-2 py-1 rounded">
+                    Currency: {formData.symbol.includes('.ST') || formData.symbol.includes('-B') || formData.symbol.includes('-A') ? 'SEK' : 
+                             formData.symbol.match(/^[A-Z]{1,5}$/) ? 'USD' : 'SEK'}
+                  </span>
+                </div>
+              )}
               <input
                 type="number"
-                name="initialPrice"
-                value={formData.initialPrice}
+                name="purchaseValue"
+                value={formData.purchaseValue}
                 onChange={handleChange}
                 className="input"
                 step="0.01"
-                min="0"
+                min="0.01"
+                placeholder={formData.type === 'savings' ? "e.g., 50000" : "e.g., 1500"}
                 required
               />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Current Price</label>
-              <input
-                type="number"
-                name="currentPrice"
-                value={formData.currentPrice}
-                onChange={handleChange}
-                className="input"
-                step="0.01"
-                min="0"
-                required
-              />
+              <p className="text-sm text-muted mt-1">
+                {formData.type === 'savings' 
+                  ? 'The initial amount you deposited'
+                  : 'The total value you invested (what you paid)'
+                }
+              </p>
             </div>
           </div>
 
@@ -255,25 +244,8 @@ export const AssetForm: React.FC<AssetFormProps> = ({ onClose, onAssetAdded }) =
                 min="0"
                 max="100"
                 placeholder="e.g., 2.5"
+                required
               />
-            </div>
-          )}
-
-          {formData.type !== 'savings' && formData.type !== 'cash' && (
-            <div className="form-group">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="autoUpdate"
-                  checked={formData.autoUpdate}
-                  onChange={handleChange}
-                  className="checkbox"
-                />
-                <span className="form-label mb-0">Enable automatic price updates</span>
-              </label>
-              <p className="text-sm text-muted mt-1">
-                Automatically fetch live prices for this asset (requires valid symbol and exchange)
-              </p>
             </div>
           )}
 
@@ -282,7 +254,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ onClose, onAssetAdded }) =
               Cancel
             </button>
             <button type="submit" className="btn btn-primary flex-1">
-              Add Asset
+              Add {formData.type === 'savings' ? 'Account' : 'Investment'}
             </button>
           </div>
         </form>

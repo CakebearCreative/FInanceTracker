@@ -51,6 +51,7 @@ export const updateSavingsAccountValues = async (): Promise<void> => {
         await db.valueHistory.add({
           assetId: asset.id!,
           value: newValue,
+          price: newValue / asset.quantity,
           date: now
         });
 

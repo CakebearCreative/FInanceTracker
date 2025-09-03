@@ -25,6 +25,7 @@ export interface Asset {
   autoUpdate: boolean; // Whether to fetch live prices
   interestRate?: number; // Annual interest rate for savings accounts (%)
   lastPriceUpdate?: Date;
+  purchaseDate?: Date; // When the asset was purchased
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,23 +54,49 @@ export interface RealEstateHistory {
 export interface ValueHistory {
   id?: number;
   assetId: number;
-  value: number;
+  value: number; // Total investment value at this point
+  price: number; // Price per unit at this point
   date: Date;
+}
+
+export interface PriceHistory {
+  id?: number;
+  symbol: string;
+  exchange: string;
+  price: number;
+  currency: string;
+  date: Date;
+}
+
+export interface Transaction {
+  id?: number;
+  assetId: number;
+  type: 'buy' | 'sell';
+  quantity: number;
+  pricePerUnit: number;
+  totalValue: number;
+  date: Date;
+  notes?: string;
+  createdAt: Date;
 }
 
 export class FinanceDB extends Dexie {
   accounts!: Table<Account>;
   assets!: Table<Asset>;
   valueHistory!: Table<ValueHistory>;
+  priceHistory!: Table<PriceHistory>;
+  transactions!: Table<Transaction>;
   realEstate!: Table<RealEstate>;
   realEstateHistory!: Table<RealEstateHistory>;
 
   constructor() {
     super('FinanceTrackerDB');
-    this.version(1).stores({
+    this.version(3).stores({
       accounts: '++id, name, type, bank, currency, createdAt',
-      assets: '++id, accountId, name, type, symbol, exchange, currentPrice, currentValue, initialPrice, initialValue, quantity, currency, autoUpdate, interestRate, lastPriceUpdate, createdAt, updatedAt',
-      valueHistory: '++id, assetId, value, date',
+      assets: '++id, accountId, name, type, symbol, exchange, currentPrice, currentValue, initialPrice, initialValue, quantity, currency, autoUpdate, interestRate, lastPriceUpdate, purchaseDate, createdAt, updatedAt',
+      valueHistory: '++id, assetId, value, price, date',
+      priceHistory: '++id, symbol, exchange, price, currency, date',
+      transactions: '++id, assetId, type, quantity, pricePerUnit, totalValue, date, notes, createdAt',
       realEstate: '++id, name, type, currentValue, initialValue, loanAmount, currency, address, createdAt, updatedAt',
       realEstateHistory: '++id, realEstateId, value, loanAmount, date'
     });

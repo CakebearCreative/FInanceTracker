@@ -49,6 +49,16 @@ export const updateAllAssetPrices = async (): Promise<void> => {
         await db.valueHistory.add({
           assetId: asset.id!,
           value: newCurrentValue,
+          price: priceInfo.price,
+          date: new Date()
+        });
+
+        // Also store in price history for chart generation
+        await db.priceHistory.add({
+          symbol: asset.symbol!,
+          exchange: asset.exchange || '',
+          price: priceInfo.price,
+          currency: asset.currency,
           date: new Date()
         });
 
@@ -129,6 +139,7 @@ export const updateSingleAssetPrice = async (assetId: number): Promise<boolean> 
       await db.valueHistory.add({
         assetId: assetId,
         value: newCurrentValue,
+        price: priceInfo.price,
         date: new Date()
       });
 
